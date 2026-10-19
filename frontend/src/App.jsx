@@ -5,7 +5,7 @@ import "leaflet/dist/leaflet.css";
 const API = import.meta.env.VITE_API_BASE_URL ? `${import.meta.env.VITE_API_BASE_URL}/api` : "/api";
 const call = (p, o) => fetch(API + p, o).then(async r => { const d = await r.json(); if (!r.ok) throw new Error(d.error || "Something went wrong."); return d; });
 const post = (p, b) => call(p, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(b) });
-const img = n => API + "/uploads/" + n;
+const img = n => "/uploads/" + n;
 const postForm = (p, fd) => call(p, { method: "POST", body: fd });
 const ugx = n => "UGX " + Number(n).toLocaleString();
 const AMENITIES = ["Water", "Wi-Fi", "Security guard", "Electricity included", "Backup generator", "Water tank", "Shuttle route"];

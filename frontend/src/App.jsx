@@ -5,12 +5,22 @@ import "leaflet/dist/leaflet.css";
 const API = import.meta.env.VITE_API_BASE_URL ? `${import.meta.env.VITE_API_BASE_URL}/api` : "/api";
 const call = (p, o) => fetch(API + p, o).then(async r => { const d = await r.json(); if (!r.ok) throw new Error(d.error || "Something went wrong."); return d; });
 const post = (p, b) => call(p, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(b) });
-const img = n => "/uploads/" + n;
+const img = n => (n.startsWith("/") || n.startsWith("http") ? n : `${API}/uploads/${n}`);
+// Pictures committed in frontend/public always survive a deploy: /campus/<university-name>.jpg and /hostels/<hostel-id>.jpg
+const slug = s => s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+const statics = (dir, name) => ["jpg", "png", "webp"].map(x => `/${dir}/${name}.${x}`);
 const postForm = (p, fd) => call(p, { method: "POST", body: fd });
 const ugx = n => "UGX " + Number(n).toLocaleString();
 const AMENITIES = ["Water", "Wi-Fi", "Security guard", "Electricity included", "Backup generator", "Water tank", "Shuttle route"];
 const SURV = { "Electricity included": "⚡", "Backup generator": "🔌", "Water tank": "💧", "Shuttle route": "🚌" };
 const PARTS = [["price", "Price"], ["distance", "Distance"], ["safety", "Safety"], ["reviews", "Reviews"]];
+
+function Pic({ sources, fallback = null, ...rest }) {
+  const list = sources.filter(Boolean); const key = list.join("|"); const [i, setI] = useState(0);
+  useEffect(() => { setI(0); }, [key]);
+  return i < list.length ? <img src={list[i]} onError={() => setI(i + 1)} {...rest} /> : fallback;
+}
+const CampusPic = ({ c, fallback, ...rest }) => <Pic sources={[c.photo && img(c.photo), ...statics("campus", slug(c.name))]} fallback={fallback} alt={c.name} {...rest} />;
 
 function Stars({ v, set }) {
   return <span className="stars">{[1, 2, 3, 4, 5].map(n => <button type="button" key={n} disabled={!set} className={n <= Math.round(v) ? "on" : ""} onClick={() => set(n)} aria-label={`${n} stars`}>★</button>)}</span>;
@@ -35,7 +45,7 @@ function Detail({ id, dist, low, onHub, onClose }) {
     <button className="x" onClick={onClose} aria-label="Close">×</button>
     {!h ? <p>{err || "Loading…"}</p> : <>
       <h2>{h.name}</h2><p className="muted">{h.room} room · {ugx(h.price)} per month</p>
-      {low ? <p className="empty">Photos are hidden in low-data mode.</p> : h.photos.length ? <div className="gal"><img className="big" src={img(h.photos[Math.min(main, h.photos.length - 1)])} alt={h.name + " photo"} /><div className="row">{h.photos.map((p, i) => <img key={p} src={img(p)} alt="" className={i === main ? "on" : ""} onClick={() => setMain(i)} />)}</div></div> : <p className="empty">No photos yet.</p>}
+      {low ? <p className="empty">Photos are hidden in low-data mode.</p> : h.photos.length ? <div className="gal"><img className="big" src={img(h.photos[Math.min(main, h.photos.length - 1)])} alt={h.name + " photo"} /><div className="row">{h.photos.map((p, i) => <img key={p} src={img(p)} alt="" className={i === main ? "on" : ""} onClick={() => setMain(i)} />)}</div></div> : <Pic sources={statics("hostels", id)} className="big" alt={h.name + " photo"} fallback={<p className="empty">No photos yet.</p>} />}
       <label className="up">Add photos<input type="file" accept="image/*" multiple onChange={addPics} /></label>
       <p>{h.description || "No description yet."}</p>
       <p className="tags">{h.amenities.map(a => <span key={a}>{a}</span>)}</p>
@@ -107,7 +117,7 @@ function Tower({ floors, x, z, hue }) {
 function Hero({ campus, reload, low }) {
   return <section className={"hero" + (low ? " flat" : "")}>{!low && <div className="scene" aria-hidden="true"><div className="city">
     <div className="ground" /><Tower floors={4} x={-80} z={-20} hue={200} /><Tower floors={6} x={20} z={30} hue={215} /><Tower floors={3} x={110} z={-30} hue={175} /></div></div>}
-    <div className="copy">{!low && (campus.photo ? <img className="campus-img" src={img(campus.photo)} alt={campus.name} /> : <label className="up">Add a photo of this campus<input type="file" accept="image/*" onChange={async e => { const fd = new FormData(); fd.append("photo", e.target.files[0]); try { await postForm(`/campuses/${campus.id}/photo`, fd); reload(); } catch { /* ignore */ } }} /></label>)}
+    <div className="copy">{!low && <CampusPic c={campus} className="campus-img" fallback={<label className="up">Add a photo of this campus<input type="file" accept="image/*" onChange={async e => { const fd = new FormData(); fd.append("photo", e.target.files[0]); try { await postForm(`/campuses/${campus.id}/photo`, fd); reload(); } catch { /* ignore */ } }} /></label>} />}
       <h1>A room you can afford, close to {campus.name}</h1><p>CampusNest ranks every hostel by price, distance, safety and student reviews, so you can pick with confidence.</p></div></section>;
 }
 
@@ -202,7 +212,7 @@ function Universities({ list, low, onOpen }) {
     <div className="filters"><label>Search<input value={q} onChange={e => setQ(e.target.value)} placeholder="Name or town" /></label>
       <label>Type<select value={t} onChange={e => setT(e.target.value)}><option value="">All</option><option>Public</option><option>Private</option></select></label></div>
     <div className="ugrid">{shown.map(c => <button key={c.id} className="ucard" onClick={() => onOpen(c.id)}>
-      {!low && c.photo && <img src={img(c.photo)} alt="" loading="lazy" />}<h3>{c.name}</h3><p className="muted">{[c.city, c.type].filter(Boolean).join(" · ")}</p>
+      {!low && <CampusPic c={c} alt="" loading="lazy" />}<h3>{c.name}</h3><p className="muted">{[c.city, c.type].filter(Boolean).join(" · ")}</p>
       <p>{c.n_hostels ? `${c.n_hostels} hostels nearby · from ${ugx(c.min_price)}` : "No hostels listed yet"}</p></button>)}</div>
     {shown.length === 0 && <p className="empty">No university matches your search. Use "Add a campus" to add yours.</p>}</div>;
 }
@@ -226,7 +236,7 @@ function UniPage({ id, low, onFind, onCommunity, reload }) {
   if (!u) return <p>{err || "Loading…"}</p>;
   const stat = (l, v) => <div className="stat"><strong>{v}</strong><span>{l}</span></div>;
   return <div className="upage">
-    {!low && (u.photo ? <img className="campus-img tall" src={img(u.photo)} alt={u.name} /> : <label className="up">Add a photo of this university<input type="file" accept="image/*" onChange={async e => { const fd = new FormData(); fd.append("photo", e.target.files[0]); try { await postForm(`/campuses/${id}/photo`, fd); load(); reload(); } catch (x) { setErr(x.message); } }} /></label>)}
+    {!low && <CampusPic c={u} className="campus-img tall" fallback={<label className="up">Add a photo of this university<input type="file" accept="image/*" onChange={async e => { const fd = new FormData(); fd.append("photo", e.target.files[0]); try { await postForm(`/campuses/${id}/photo`, fd); load(); reload(); } catch (x) { setErr(x.message); } }} /></label>} />}
     <h2>{u.name}</h2><p className="muted">{[u.city, u.type].filter(Boolean).join(" · ") || "Details not added yet"}</p>
     <p>{u.about || "No description yet. Add one under Edit details."}</p>
     {u.website && <p><a href={u.website} target="_blank" rel="noreferrer">Visit website</a></p>}
@@ -284,10 +294,15 @@ export default function App() {
   const [q, setQ] = useState({ budget: "", max_km: 5, room: "", sort: "match" }); const [list, setList] = useState([]); const [err, setErr] = useState("");
   const [low, setLow] = useState(() => { try { return localStorage.getItem("lowdata") === "1"; } catch { return false; } }); const [marks, setMarks] = useState([]); const [hub, setHub] = useState(null); const [stats, setStats] = useState(null); const [uniId, setUniId] = useState(null);
   const [open, setOpen] = useState(null); const [picked, setPicked] = useState([]); const [cmp, setCmp] = useState(false);
-  const loadCampuses = sel => call("/campuses").then(c => { setCampuses(c); setCid(sel || cid || c[0]?.id); }).catch(e => setErr("Cannot reach the server. " + e.message));
+  const [saved, setSaved] = useState(() => { try { return JSON.parse(localStorage.getItem("saved") || "[]"); } catch { return []; } }); const [savedOnly, setSavedOnly] = useState(false);
+  const loadCampuses = (sel, n = 0) => call("/campuses").then(c => { setErr(""); setCampuses(c); setCid(sel || cid || c[0]?.id); }).catch(e => {
+    if (n < 25) { setErr("The server is waking up. On the free plan this can take up to a minute, please wait…"); setTimeout(() => loadCampuses(sel, n + 1), 4000); } else setErr("Cannot reach the server. " + e.message);
+  });
   const campus = campuses.find(c => c.id === cid);
   const loadList = () => { if (!cid) return; const p = new URLSearchParams({ campus_id: cid, max_km: q.max_km, sort: q.sort }); if (q.budget) p.set("budget", q.budget); if (q.room) p.set("room", q.room); call("/hostels?" + p).then(setList).catch(e => setErr(e.message)); };
   useEffect(() => { try { localStorage.setItem("lowdata", low ? "1" : "0"); } catch { /* ignore */ } document.body.classList.toggle("lowdata", low); }, [low]);
+  useEffect(() => { try { localStorage.setItem("saved", JSON.stringify(saved)); } catch { /* ignore */ } }, [saved]);
+  const toggleSaved = id => setSaved(s => s.includes(id) ? s.filter(x => x !== id) : [...s, id]);
   const loadMarks = () => { if (cid) call("/landmarks?campus_id=" + cid).then(setMarks).catch(() => {}); };
   useEffect(loadMarks, [cid]);
   useEffect(() => { call("/stats").then(setStats).catch(() => {}); }, [view]);
@@ -296,6 +311,7 @@ export default function App() {
   useEffect(loadList, [cid, q, view]);
   const toggle = id => setPicked(p => p.includes(id) ? p.filter(x => x !== id) : p.length < 3 ? [...p, id] : p);
   const items = list.filter(h => picked.includes(h.id));
+  const shown = savedOnly ? list.filter(h => saved.includes(h.id)) : list;
   return <>
     <header><button className="brand" onClick={() => setView("home")}><img src="/logo.png" alt="" />CampusNest</button>
       <label className="pick">Your campus<select value={cid || ""} onChange={e => { setCid(+e.target.value); setPicked([]); }}>{campuses.map(c => <option key={c.id} value={c.id}>{c.name}{c.city ? ", " + c.city : ""}</option>)}</select></label>
@@ -317,16 +333,18 @@ export default function App() {
             <label>Within {q.max_km} km<input type="range" min="1" max="30" value={q.max_km} onChange={e => setQ({ ...q, max_km: e.target.value })} /></label>
             <label>Room type<select value={q.room} onChange={e => setQ({ ...q, room: e.target.value })}><option value="">Any</option><option>Shared</option><option>Single</option><option>Self-contained</option></select></label>
             <label>Sort by<select value={q.sort} onChange={e => setQ({ ...q, sort: e.target.value })}><option value="match">Best match</option><option value="price">Lowest price</option><option value="distance">Closest</option></select></label>
+            <label className="chk"><input type="checkbox" checked={savedOnly} onChange={e => setSavedOnly(e.target.checked)} />Saved only ({saved.length})</label>
           </div>
           <p className="muted">Match score = price 30%, distance 30%, safety 25%, reviews 15%, compared with the other rooms in your results.</p>
-          {list.length === 0 && <p className="empty">No rooms match. Raise your budget or widen the distance.</p>}
-          {list.map(h => <article className="card" key={h.id} onMouseMove={tilt} onMouseLeave={untilt}>
-            {!low && <div className="thumb">{h.photo ? <img src={img(h.photo)} alt={h.name + " room"} loading="lazy" /> : <span>No photo yet</span>}</div>}
+          {shown.length === 0 && <p className="empty">{savedOnly ? "Nothing saved in these results yet. Tap the heart on a room." : "No rooms match. Raise your budget or widen the distance."}</p>}
+          {shown.map(h => <article className="card" key={h.id} onMouseMove={tilt} onMouseLeave={untilt}>
+            {!low && <div className="thumb"><Pic sources={[h.photo && img(h.photo), ...statics("hostels", h.id)]} alt={h.name + " room"} loading="lazy" fallback={<span>No photo yet</span>} /></div>}
             <div className="score"><strong>{h.score.total}</strong><small>match</small></div>
             <div className="body"><h3><button className="link" onClick={() => setOpen(h.id)}>{h.name}</button></h3>
               <p>{ugx(h.price)} / month · {h.distance_km} km · {h.room}</p>
               <p className="muted">Safety {h.safety_score.toFixed(1)}/5 · {h.n_reviews} reviews</p><Badges list={h.amenities} /><Breakdown s={h.score} /></div>
-            <label className="cmp"><input type="checkbox" checked={picked.includes(h.id)} onChange={() => toggle(h.id)} />Compare</label></article>)}
+            <div className="side"><button className={"heart" + (saved.includes(h.id) ? " on" : "")} onClick={() => toggleSaved(h.id)} aria-label={saved.includes(h.id) ? "Remove from saved" : "Save this room"} aria-pressed={saved.includes(h.id)}>♥</button>
+              <label className="cmp"><input type="checkbox" checked={picked.includes(h.id)} onChange={() => toggle(h.id)} />Compare</label></div></article>)}
           {!low && <AddLandmark campus={campus} done={loadMarks} />}
         </section>
         <aside>{low ? <p className="empty">Low-data mode is on, so the map is hidden. Turn it off in the header to see the map.</p> : <MapContainer key={campus.id} center={[campus.lat, campus.lng]} zoom={14} className="map"><TileLayer url="https://tile.openstreetmap.org/{z}/{x}/{y}.png" attribution="© OpenStreetMap" />

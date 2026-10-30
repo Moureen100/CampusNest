@@ -124,3 +124,7 @@ body.lowdata .logo-badge{animation:none}
 /* ---- home: skyline only, logo lives in the header ---- */
 .hvisual .logo-badge,.hvisual .ground{display:none}
 .hvisual{justify-content:center}
+
+/* ---- saved rooms ---- */
+.side{display:flex;flex-direction:column;align-items:flex-end;gap:.4rem;transform:translateZ(14px)}
+.heart{background:none;border:0;font-size:1.6rem;line-height:1;color:var(--line);cursor:pointer;transition:transform .15s,color .15s}.heart:hover{transform:scale(1.2)}.heart.on{color:var(--coral)}

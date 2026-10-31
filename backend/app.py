@@ -53,6 +53,34 @@ UNIS = [("Gulu University", "Gulu", 2.7800, 32.3000, "Public"), ("Busitema Unive
         ("Makerere University Business School", "Kampala", 0.3290, 32.6120, "Public"), ("Uganda Christian University", "Mukono", 0.3530, 32.7550, "Private"),
         ("Kampala International University", "Kampala", 0.2930, 32.5990, "Private"), ("Islamic University in Uganda", "Mbale", 1.0750, 34.1700, "Private")]
 
+# Sample hostels for every university that has none yet. Generic names, clearly marked as sample data.
+TEMPLATES = [("Student Rooms", 130000, "Shared", "Water", 0.004, -0.003, 3), ("Scholars Hostel", 240000, "Single", "Water,Wi-Fi,Security guard", -0.006, 0.007, 4),
+             ("Budget Lodge", 110000, "Shared", "Water,Water tank", 0.015, 0.010, 2),
+             ("Executive Hostel", 360000, "Self-contained", "Water,Wi-Fi,Security guard,Backup generator,Electricity included", 0.008, -0.012, 5),
+             ("Campus Gate Hostel", 190000, "Single", "Water,Wi-Fi,Shuttle route", -0.002, 0.003, 3)]
+# university name -> (short name used in hostel names, price factor)
+MORE = {"Gulu University": ("Gulu", .9), "Busitema University": ("Busitema", .8), "Kabale University": ("Kabale", .9), "Lira University": ("Lira", .85),
+        "Muni University": ("Arua", .85), "Soroti University": ("Soroti", .85), "Makerere University Business School": ("Nakawa", 1.15),
+        "Uganda Christian University": ("Mukono", 1.1), "Kampala International University": ("Kansanga", 1.15), "Islamic University in Uganda": ("Mbale", .85)}
+
+def seed_more(d):
+    k = d.execute("SELECT COUNT(*) FROM hostel").fetchone()[0]
+    for j, (cname, (short, factor)) in enumerate(MORE.items()):
+        c = d.execute("SELECT lat,lng FROM campus WHERE name=?", (cname,)).fetchone()
+        if not c:
+            continue
+        for suffix, price, room, amen, dy, dx, safety in TEMPLATES:
+            name = f"{short} {suffix}"
+            if d.execute("SELECT 1 FROM hostel WHERE name=?", (name,)).fetchone():
+                continue
+            k += 1; elec = "Electricity included" in amen
+            cur = d.execute("INSERT INTO hostel(name,price,room,amenities,phone,description,lat,lng,safety,deposit,utilities) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+                            (name, round(price * factor / 5000) * 5000, room, amen, f"25670000{k:04d}", "Sample listing for demo purposes.",
+                             c[0] + dy * (-1) ** j, c[1] + dx * (-1) ** (j // 2), safety, 0 if elec else 100000, 0 if elec else 25000))
+            for r in range(2):
+                d.execute("INSERT INTO review(hostel_id,rating,safety,comment) VALUES(?,?,?,?)",
+                          (cur.lastrowid, max(1, min(5, safety + (r - 1))), safety, ["Clean and quiet.", "Fair price for the area.", "Landlord responds quickly."][(k + r) % 3]))
+
 def seed_unis(d):
     for n, city, lat, lng, t in UNIS:
         if not d.execute("SELECT 1 FROM campus WHERE name=?", (n,)).fetchone():
@@ -62,6 +90,7 @@ def seed_unis(d):
 def enrich(d):
     """Demo data: more universities, survival-amenity badges and cost values for the sample hostels (ids 1-15). Safe to run repeatedly."""
     seed_unis(d)
+    seed_more(d)
     d.execute("UPDATE hostel SET amenities=REPLACE(amenities,'Backup power','Backup generator')")
     d.execute("UPDATE hostel SET amenities=amenities||',Water tank' WHERE id<=15 AND id%2=0 AND amenities NOT LIKE '%Water tank%'")
     d.execute("UPDATE hostel SET amenities=amenities||',Electricity included' WHERE id<=15 AND id%3=0 AND amenities NOT LIKE '%Electricity included%'")
